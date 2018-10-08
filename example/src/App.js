@@ -1,13 +1,15 @@
-import React, { Component } from 'react'
+import React, { PureComponent } from 'react';
 
-import ExampleComponent from 'react-pdf-reader'
+import PdfReader from 'react-pdf-reader';
 
-export default class App extends Component {
-  render () {
+export default class App extends PureComponent {
+  render() {
     return (
       <div>
-        <ExampleComponent text='Modern React component module' />
+        <PdfReader
+          url="https://cors-anywhere.herokuapp.com/https://www.msully.net/files/inline_slides.pdf"
+        />
       </div>
-    )
+    );
   }
 }
