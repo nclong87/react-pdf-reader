@@ -15,13 +15,17 @@ npm install --save react-pdf-reader
 ```jsx
 import React, { Component } from 'react'
 
-import MyComponent from 'react-pdf-reader'
+import PdfReader from 'react-pdf-reader'
 
 class Example extends Component {
   render () {
     return (
-      <MyComponent />
-    )
+      <div>
+        <PdfReader
+          url="https://cors-anywhere.herokuapp.com/https://www.msully.net/files/inline_slides.pdf"
+        />
+      </div>
+    );
   }
 }
 ```
