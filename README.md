@@ -13,12 +13,12 @@ npm install --save react-pdf-reader
 ## Usage
 
 ```jsx
-import React, { Component } from 'react'
+import React, { PureComponent } from 'react';
 
-import PdfReader from 'react-pdf-reader'
+import PdfReader from 'react-pdf-reader';
 
-class Example extends Component {
-  render () {
+export default class App extends PureComponent {
+  render() {
     return (
       <div>
         <PdfReader
@@ -28,6 +28,14 @@ class Example extends Component {
     );
   }
 }
+```
+
+## Run demo
+
+```bash
+npm run build
+cd example
+npm start
 ```
 
 ## License
