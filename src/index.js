@@ -1,116 +1,187 @@
-import React, { PureComponent } from 'react';
-import PropTypes from 'prop-types';
-import Pdf from './pdf';
-import './pdfReader.less';
+import React, { PureComponent } from 'react'
+import PropTypes from 'prop-types'
+import styles from './styles.css'
 
-class PdfReader extends PureComponent {
+class PDF extends PureComponent {
   constructor(props) {
-    super(props);
+    super(props)
     this.state = {
-      contentWidth: null,
-      isFullscreen: false,
-      isExternalDocument: props.isExternalDocument,
-      seen: false,
-    };
-    this.onDocumentError = this.onDocumentError.bind(this);
-    this.handleOnScrollToEnd = this.handleOnScrollToEnd.bind(this);
+      currentPage: 1
+    }
+    this.totalPages = 0
+    this.handleOnReceived = this.handleOnReceived.bind(this)
+    this.handlePressEscape = this.handlePressEscape.bind(this)
+    this.handleClickOnPopupContainer = this.handleClickOnPopupContainer.bind(this)
+    this.goToPage = this.goToPage.bind(this)
+    this.requestPresentationMode = this.requestPresentationMode.bind(this)
+    this.sendDocumentState = this.sendDocumentState.bind(this)
   }
 
   componentDidMount() {
-    setTimeout(() => {
-      if (this.holder) {
-        this.setState({
-          contentWidth: this.holder.offsetWidth,
-        });
+    window.addEventListener('message', this.handleOnReceived)
+    document.addEventListener('keydown', this.handlePressEscape, false)
+  }
+
+  componentDidUpdate(prevProps, prevState) {
+    const { currentPage } = this.state
+    if (prevState.currentPage !== currentPage) {
+      this.props.onPageChanged(currentPage)
+    }
+    if (prevProps.downloadable !== this.props.downloadable) {
+      const resource = {
+        downloadable: this.props.downloadable
       }
-    }, 500);
-  }
-
-  componentWillReceiveProps(props) {
-    if (this.props.url !== props.url) {
-      this.setState({
-        isExternalDocument: props.isExternalDocument,
-      });
+      const host = this.props.viewer.host
+      this.iframe.contentWindow.postMessage({ message: 'onResourceChanged', data: resource }, host)
     }
   }
 
-  onDocumentError(err) {
-    console.log('ERROR', err);
-    // Below is magical thing, we switch back to another reading type when load document error
-    this.setState({
-      isExternalDocument: true,
-    });
+  componentWillUnmount() {
+    window.removeEventListener('message', this.handleOnReceived, false)
+    document.removeEventListener('keydown', this.handlePressEscape, false)
   }
 
-  getUrlByType() {
-    if (this.state.isExternalDocument) {
-      return `https://docs.google.com/gview?url=${this.props.url}&embedded=true`;
-    }
-    return this.props.url;
+  goToPage(page) {
+    // console.log('goToPage1', page)
+    const host = this.props.viewer.host
+    this.iframe.contentWindow.postMessage({ message: 'onPageChanged', data: page }, host)
   }
 
-  handleOnScrollToEnd() {
-    if (this.state.seen === true) {
-      return;
-    }
-    this.setState({
-      seen: true,
-    }, () => {
-      if (this.props.onEnded !== null) {
-        this.props.onEnded();
+  requestPresentationMode(data) {
+    const host = this.props.viewer.host
+    this.iframe.contentWindow.postMessage({ message: 'onPresentationModeRequested', data }, host)
+  }
+
+  sendDocumentState(data) {
+    const host = this.props.viewer.host
+    this.iframe.contentWindow.postMessage({ message: 'onStateChanged', data }, host)
+  }
+
+  handlePressEscape(e) {
+    if (e.keyCode === 27) {
+      if (typeof e.preventDefault === 'function') {
+        e.preventDefault()
       }
-    });
+      if (typeof e.stopPropagation === 'function') {
+        e.stopPropagation()
+      }
+      this.props.onRequestClose()
+    }
+  }
+
+  handleClickOnPopupContainer(e) {
+    // console.log('handleClickOnPopupContainer', e.target)
+    if (e.target.className.indexOf('popupContainer') >= 0) {
+      this.props.onRequestClose()
+    }
+  }
+
+  handleOnReceived(event) {
+    const host = this.props.viewer.host
+    if (event.origin !== host) {
+      return
+    }
+    if (event.data && event.data.type) {
+      // console.log('Received Message : ', event)
+      if (!this.iframe) {
+        return
+      }
+      switch (event.data.type) {
+        case 'ready': {
+          const resource = {
+            src: this.props.src,
+            popup: this.props.popup,
+            downloadable: this.props.downloadable
+          }
+          this.iframe.contentWindow.postMessage({ message: 'onResourceChanged', data: resource }, host)
+          break
+        }
+        case 'close':
+          this.props.onRequestClose()
+          break
+        case 'documentloaded': {
+          const { pagesCount } = event.data.data
+          this.totalPages = pagesCount
+          break
+        }
+        case 'pagechanging': {
+          const { pageNumber } = event.data.data
+          this.setState({ currentPage: pageNumber })
+          break
+        }
+        case 'pagerendered': {
+          const { pageNumber } = event.data.data
+          if (this.totalPages > 0 && pageNumber === this.totalPages) {
+            this.props.onLastPage()
+          }
+          break
+        }
+        default:
+          break
+      }
+    }
+  }
+
+  renderIframe() {
+    const { host, path } = this.props.viewer
+    const style = { width: '100%', height: '100%' }
+    return (
+      <iframe
+        ref={el => {
+          this.iframe = el
+        }}
+        className={this.props.popup ? styles.popupiframe : ''}
+        frameBorder='0'
+        allowFullScreen
+        style={style}
+        title='PDF Reader'
+        src={`${host}${path}`}
+      />
+    )
   }
 
   render() {
-    const url = this.getUrlByType();
-    if (url === '') {
-      return null;
-    }
-    if (this.state.isExternalDocument) {
+    if (this.props.popup) {
       return (
-        <iframe className="pdf-reader-container" title="PDF reader" frameBorder={0} style={this.props.style} src={url}></iframe>
-      );
+        <div
+          role='button'
+          tabIndex={0}
+          className={styles.popupContainer}
+          onClick={this.handleClickOnPopupContainer}
+        >
+          <div className={styles.popupContent}>
+            {this.renderIframe()}
+          </div>
+        </div>
+      )
     }
-    return (
-      <div style={Object.assign({}, { width: '100%', display: 'block', maxWidth: this.state.contentWidth }, this.props.style)} ref={(el) => { this.holder = el; }}>
-
-        {
-          this.state.contentWidth ?
-            <Pdf
-              onScrollToEnd={this.handleOnScrollToEnd}
-              showLoading={this.props.showLoading}
-              onDocumentError={this.onDocumentError}
-              onFullScreenChanged={isFullscreen => this.setState({ isFullscreen: isFullscreen })}
-              contentWidth={this.state.contentWidth}
-              height={this.props.height}
-              file={url}
-              scale={this.props.scale}
-            /> : null
-        }
-
-      </div>
-    );
+    return this.renderIframe()
   }
 }
 
-PdfReader.propTypes = {
-  isExternalDocument: PropTypes.bool,
-  showLoading: PropTypes.bool,
-  height: PropTypes.string,
-  style: PropTypes.instanceOf(Object),
-  url: PropTypes.string.isRequired,
-  scale: PropTypes.number,
-  onEnded: PropTypes.func,
-};
+PDF.propTypes = {
+  viewer: PropTypes.instanceOf(Object),
+  popup: PropTypes.bool,
+  downloadable: PropTypes.bool,
+  src: PropTypes.oneOfType([
+    PropTypes.string,
+    PropTypes.instanceOf(Object)
+  ]).isRequired,
+  onPageChanged: PropTypes.func,
+  onLastPage: PropTypes.func,
+  onRequestClose: PropTypes.func
+}
 
-PdfReader.defaultProps = {
-  isExternalDocument: false,
-  showLoading: true,
-  style: {},
-  height: '100%',
-  scale: null,
-  onEnded: null,
-};
+PDF.defaultProps = {
+  viewer: {
+    host: 'https://nclong87.github.io',
+    path: '/web/viewer.html'
+  },
+  popup: false,
+  downloadable: false,
+  onPageChanged: () => null,
+  onRequestClose: () => null,
+  onLastPage: () => null
+}
 
-export default PdfReader;
+export default PDF
